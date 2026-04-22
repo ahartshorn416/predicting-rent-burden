@@ -16,11 +16,12 @@ Roles:
 - Key Columns: AH
 - Create Rent_burdened: AH
 - Create Unstable_employment: AH
-- PR-AUC baseline: AH
+- Positive class baseline: AH
 - Select Variables: AH
 - Tables: AH
 - Stratified Summaries: AH
 - Visualizations: AH
+- Testing & Validation: AH
 """
 # -----------------------------
 # Imports
@@ -83,10 +84,10 @@ print("\nUNSTABLE_EMPLOYMENT value counts:")
 print(df['UNSTABLE_EMPLOYMENT'].value_counts())
 
 # -----------------------------
-# PR-AUC baseline
+# Positive class baseline
 # -----------------------------
 baseline = df[target].mean()
-print(f"\nPR-AUC baseline: {baseline:.4f}")
+print("Positive class baseline:", baseline)
 
 # -----------------------------
 # Select variables
@@ -184,3 +185,45 @@ plt.close()
 
 print("\n✅ EDA COMPLETE — all outputs saved.")
 print("EDA completed and figures saved.")
+
+# -----------------------------
+# Testing & Validation
+# -----------------------------
+
+"""
+SELF TEST: AH on Local Machine
+------------------------------
+- Script runs successfully on Pycharm
+- No runtime errors during full EDA pipeline execution
+- Dataset loaded successfully from local IPUMS CSV file
+- Target variable (rent_burdened) created without errors
+- UNSTABLE_EMPLOYMENT feature generated successfully
+- Summary statistics computed for both categorical and continuous variables
+- Visualizations generated and saved to output directory
+- Sampling (n=50,000) successfully used for performance optimization
+
+USER TEST: Secondary Device 
+___________________________
+- Script is designed to be portable across machines
+- Due to large file size (~IPUMS ACS dataset), raw data is NOT included in repository
+- User must download dataset directly from IPUMS USA:
+    https://usa.ipums.org/usa/
+
+REQUIRED USER STEPS:
+1. Download ACS dataset from IPUMS (CSV format)
+    - 2024 5 year ACS
+    - Selected Variables: YEAR, MULTYEAR, SAMPLE, SERIAL, CBSERIAL, STATEFIP, PUMA, OWNERSHP, RENTGRS, HHINCOME, 
+                          ROOMS, BEDROOMS, SEX, AGE, RACE, EDUC, EMPSTAT, WKSWORK1, OCC
+2. Place file in local directory
+3. Update `path` variable in script:
+   path = "YOUR_LOCAL_FILE_PATH.csv"
+4. Install required packages:
+   pandas, numpy, sklearn
+
+RESULT:
+- Script runs successfully end-to-end after path update
+- No code modifications required beyond file location update
+- Output files generated in /results folder
+
+USER TEST STATUS: PASSED (with dataset dependency noted)
+"""

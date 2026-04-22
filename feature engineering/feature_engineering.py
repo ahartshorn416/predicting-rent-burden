@@ -12,13 +12,13 @@ applying PCA, and exporting the processed datasets for modeling.
 
 Roles:
 
-- Target Engineering: AH
+- Feature Engineering Function: AH
 - Feature Engineering: AH
-- Select Model Features: AH
+- Select Features: AH
 - Train Test Split: AH
-- Unsupervised Feature Engineering (PCA): AH
+- Fit StandardScaler + PCA on training data: AH
+- Testing & Validation: AH
 """
-
 
 #  -----------------------------
 # Imports
@@ -97,9 +97,9 @@ print(df["rent_burdened"].value_counts())
 print("\nEmployment instability distribution:")
 print(df["UNSTABLE_EMPLOYMENT"].value_counts())
 
-# =========================
-# 3. SELECT FEATURES
-# =========================
+#  -----------------------------
+# Select Features
+#  -----------------------------
 features = [
     "log_income",
     "log_rent",
@@ -140,13 +140,27 @@ print("Train shape:", X_train.shape)
 print("Test shape:", X_test.shape)
 
 # -----------------------------
-#  Standardize + PCA
+# Fit StandardScaler + PCA on training data
 # -----------------------------
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 
+X_test_scaled = scaler.transform(X_test)
+
 pca = PCA(n_components=0.90)
 X_train_pca = pca.fit_transform(X_train_scaled)
+
+X_test_pca = pca.transform(X_test_scaled)
+
+pd.DataFrame(X_train_pca).to_csv(
+    os.path.join(output_dir, "X_train_pca.csv"),
+    index=False
+)
+
+pd.DataFrame(X_test_pca).to_csv(
+    os.path.join(output_dir, "X_test_pca.csv"),
+    index=False
+)
 
 print("\nPCA components retained:", pca.n_components_)
 
@@ -158,3 +172,43 @@ X_train.to_csv(os.path.join(output_dir, "X_train.csv"), index=False)
 X_test.to_csv(os.path.join(output_dir, "X_test.csv"), index=False)
 
 print("\nAll processed files saved successfully.")
+
+# -----------------------------
+# Testing & Validation
+# -----------------------------
+
+"""
+SELF TEST: AH on Local Machine
+------------------------------
+- Script runs successfully on Pycharm
+- No runtime errors encountered
+- Engineered features were created correctly
+- Train/Split successful
+- PCA executed without errors
+- Results saved successfully
+
+USER TEST: Secondary Device 
+___________________________
+- Script is designed to be portable across machines
+- Due to large file size (~IPUMS ACS dataset), raw data is NOT included in repository
+- User must download dataset directly from IPUMS USA:
+    https://usa.ipums.org/usa/
+
+REQUIRED USER STEPS:
+1. Download ACS dataset from IPUMS (CSV format)
+    - 2024 5 year ACS
+    - Selected Variables: YEAR, MULTYEAR, SAMPLE, SERIAL, CBSERIAL, STATEFIP, PUMA, OWNERSHP, RENTGRS, HHINCOME, 
+                          ROOMS, BEDROOMS, SEX, AGE, RACE, EDUC, EMPSTAT, WKSWORK1, OCC
+2. Place file in local directory
+3. Update `path` variable in script:
+   path = "YOUR_LOCAL_FILE_PATH.csv"
+4. Install required packages:
+   pandas, numpy, sklearn
+
+RESULT:
+- Script runs successfully end-to-end after path update
+- No code modifications required beyond file location update
+- Output files generated in /results folder
+
+USER TEST STATUS: PASSED (with dataset dependency noted)
+"""
