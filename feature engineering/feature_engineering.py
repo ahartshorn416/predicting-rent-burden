@@ -1,3 +1,25 @@
+"""
+feature_engineering.py
+
+Author: Alison Hartshorn
+Team: Iota
+Project Name: Predicting Rent Burden in U.S. Households Using Machine Learning and
+Fairness Analysis
+
+This script builds a machine learning dataset to predict whether U.S. households are rent-burdened by
+cleaning ACS data, engineering financial and employment features, splitting into train/test sets, applying
+PCA, and exporting the processed datasets for modeling.
+
+Roles:
+
+- Target Engineering: AH
+- Feature Engineering: AH
+- Select Model Features: AH
+- Train Test Split: AH
+- Unsupervised Feature Engineering (PCA): AH
+"""
+
+
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -11,7 +33,7 @@ import os
 path = r"C:\\Users\\alica\\Downloads\\usa_00003.csv"
 df = pd.read_csv(path)
 
-print(f"Data loaded: {df.shape}")
+print(f"Data loaded: {df.shape}")Predicting Rent Burden in U.S. Househol
 
 # =========================
 # 2. TARGET ENGINEERING

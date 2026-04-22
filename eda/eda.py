@@ -1,3 +1,28 @@
+"""
+eda.py
+
+Author: Alison Hartshorn
+Team: Iota
+Project Name: Predicting Rent Burden in U.S. Households Using Machine Learning and
+Fairness Analysis
+
+This script performs exploratory data analysis on U.S. household survey data by creating a rent-burden indicator,
+summarizing key demographic and economic variables, and generating statistical tables and visualizations that are
+saved to an output folder.
+
+Roles:
+
+- Settings: AH
+- Key Columns: AH
+- Create Rent_burdened: AH
+- Create Unstable_employment: AH
+- PR-AUC baseline: AH
+- Select Variables: AH
+- Tables: AH
+- Stratified Summaries: AH
+- Visualizations: AH
+"""
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -40,7 +65,7 @@ print("\nrent_burdened value counts:")
 print(df[target].value_counts())
 
 # -----------------------------
-# Create UNSTABLE_EMPLOYMENT (robust)
+# Create UNSTABLE_EMPLOYMENT
 # -----------------------------
 if weeks_col in df.columns and empstat_col in df.columns:
     df['UNSTABLE_EMPLOYMENT'] = np.where(
@@ -62,8 +87,8 @@ baseline = df[target].mean()
 print(f"\nPR-AUC baseline: {baseline:.4f}")
 
 # -----------------------------
-# Select variables (adjustable)
-# -----------------------------
+# Select variables
+# ----------------------------
 categorical_vars = ['UNSTABLE_EMPLOYMENT', 'EMPSTAT']
 continuous_vars = [income_col, rent_col]
 
