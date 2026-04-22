@@ -87,8 +87,7 @@ rent_burdened = 1 if (RENTGRS / HHINCOME) > 0.3 else 0
 - F1-score  
 - ROC-AUC  
 
-**Baseline PR-AUC:** ~0.0046  
-(Target is significantly above baseline)
+**Baseline Positive Rate:** ~0.0046  
 
 ---
 
@@ -141,3 +140,52 @@ Evaluated across:
 - Joint Center for Housing Studies (Harvard University)  
 
 ---
+
+# 🚀 How to Run This Project
+
+## 📥 1. Clone or download the repository
+```bash
+git clone <your-repo-url>
+cd <your-project-folder>
+```
+
+## 📊 2. Download the dataset (REQUIRED)
+
+This project uses IPUMS ACS microdata, which is not included due to file size.
+
+Steps:
+
+Go to https://usa.ipums.org/usa/
+Create a free account
+Select the 2024 ACS 5-Year dataset and selected variables
+Download as CSV format
+Save it to your local machine
+
+## ⚙️ 3. Update file paths in scripts
+
+Open the Python files and update the dataset path:
+```python
+path = r"C:\Users\YOUR_USERNAME\Downloads\your_file.csv"
+output_dir = r"C:\Users\YOUR_USERNAME\...\results"
+```
+## 📦 4. Install required packages
+```bash
+pip install pandas numpy scikit-learn matplotlib seaborn
+```
+## ▶️ 5. Run the scripts in order
+```bash
+python eda.py
+python feature_engineering.py
+```
+## 📂 6. Output files
+
+All outputs will be saved in:
+
+/results
+
+Includes:
+
+Cleaned datasets
+Summary tables
+Visualizations
+Model-ready datasets
