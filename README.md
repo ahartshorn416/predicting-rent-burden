@@ -30,38 +30,6 @@ Can machine learning models predict which U.S. households are rent burdened, and
 ---
 
 ## 🧾 Selected Variables
-# 🏠 Predicting Rent Burden in U.S. Households Using Machine Learning & Fairness Analysis
-
-## 📌 Overview
-This project analyzes whether U.S. households are rent burdened—defined as spending more than 30% of household income on rent—using large-scale survey data and machine learning techniques. In addition to predicting rent burden status, the project evaluates how model performance varies across demographic groups to assess fairness and equity.
-
-The goal is to generate insights that can support policymakers in identifying at-risk households and improving housing affordability strategies.
-
----
-
-## ❓ Research Question
-Can machine learning models predict which U.S. households are rent burdened, and does model performance vary across demographic and geographic groups in ways that inform housing policy decisions?
-
----
-
-## 🎯 Objectives
-- Predict rent burden status using machine learning models  
-- Identify key drivers of housing affordability  
-- Evaluate model performance across demographic groups  
-- Assess fairness using multiple metrics  
-- Provide policy-relevant insights  
-
----
-
-## 📊 Data Source
-- **Dataset:** 2024 American Community Survey (ACS) 5-Year PUMS  
-- **Access:** IPUMS USA  
-- **Format:** `.dat` file processed into a structured dataset using Python  
-- **Size:** ~16 million observations  
-
----
-
-## 🧾 Selected Variables
 YEAR, MULTYEAR, SAMPLE, SERIAL, CBSERIAL,
 STATEFIP, PUMA, OWNERSHP, RENTGRS, HHINCOME,
 ROOMS, BEDROOMS, SEX, AGE, RACE, EDUC,
