@@ -36,7 +36,31 @@ import os
 path = r"C:\Users\alica\Downloads\usa_00003.csv"
 output_dir = r"C:\Users\alica\OneDrive\Documents\predicting-rent-burden\results"
 
-os.makedirs(output_dir, exist_ok=True)
+#  -----------------------------
+# Load Data
+#  -----------------------------
+cols_needed = ['MULTYEAR', 'HHINCOME', 'RENTGRS', 'WKSWORK1', 'EMPSTAT',
+               'AGE', 'EDUC', 'SEX', 'RACE', 'OWNERSHP']
+
+df = pd.read_csv(path, usecols=cols_needed)
+print(f"Data loaded: {df.shape}")
+
+#  -----------------------------
+# Pre-processing (consistent with EDA)
+#  -----------------------------
+
+# Replace IPUMS sentinel value for missing income with NaN, then median impute
+df['HHINCOME'] = df['HHINCOME'].replace(9999999, np.nan)
+df['HHINCOME'] = df['HHINCOME'].fillna(df['HHINCOME'].median())
+
+# Restrict to renter households only (RENTGRS > 0)
+# Non-renters are excluded because:
+#   1. They cannot be rent-burdened by definition
+#   2. Including them inflates the negative class and worsens class imbalance
+
+n_before = len(df)
+df = df[df['RENTGRS'] > 0].copy()
+print(f"Restricted to renters: {n_before - len(df)} rows removed ({n_before} -> {len(df)})")
 
 #  -----------------------------
 #  Feature Engineering function
@@ -52,10 +76,9 @@ def build_rent_burden_features(df):
     # Target variable
     # -------------------------
     df["rent_burdened"] = np.where(
-        (df["RENTGRS"] > 0) &
-        (df["HHINCOME"] > 0) &
-        ((df["RENTGRS"] / df["HHINCOME"]) > 0.3),
-        1, 0
+        df["HHINCOME"] <= 0,
+        1,
+        np.where((df["RENTGRS"] / df["HHINCOME"]) > 0.3, 1, 0)
     )
 
     # -------------------------
@@ -79,13 +102,6 @@ def build_rent_burden_features(df):
 
     return df
 
-
-#  -----------------------------
-# Load Data
-#  -----------------------------
-df = pd.read_csv(path)
-print(f"Data loaded: {df.shape}")
-
 # -----------------------------
 # Feature Engineering
 # -----------------------------
@@ -93,6 +109,7 @@ df = build_rent_burden_features(df)
 
 print("\nTarget distribution:")
 print(df["rent_burdened"].value_counts())
+print(f"Positive class rate: {df['rent_burdened'].mean():.4f}")
 
 print("\nEmployment instability distribution:")
 print(df["UNSTABLE_EMPLOYMENT"].value_counts())
@@ -144,12 +161,10 @@ print("Test shape:", X_test.shape)
 # -----------------------------
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
-
 X_test_scaled = scaler.transform(X_test)
 
 pca = PCA(n_components=0.90)
 X_train_pca = pca.fit_transform(X_train_scaled)
-
 X_test_pca = pca.transform(X_test_scaled)
 
 pd.DataFrame(X_train_pca).to_csv(
@@ -182,10 +197,14 @@ SELF TEST: AH on Local Machine
 ------------------------------
 - Script runs successfully on Pycharm
 - No runtime errors encountered
+- usecols used to avoid memory allocation error on large dataset
+- IPUMS sentinel value (9999999) replaced with NaN before any processing
+- Non-renter households filtered out before feature engineering
+- Zero-income edge case handled consistently with EDA operationalization
 - Engineered features were created correctly
 - Train/Split successful
 - PCA executed without errors
-- Results saved successfully
+- Results saved successfull
 
 USER TEST: Secondary Device 
 ___________________________

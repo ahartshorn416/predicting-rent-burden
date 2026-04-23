@@ -14,6 +14,8 @@ Roles:
 
 - Settings: AH
 - Key Columns: AH
+- Missing Exploration: AH
+- Restricting to Renter-only Households: AH
 - Create Rent_burdened: AH
 - Create Unstable_employment: AH
 - Positive class baseline: AH
