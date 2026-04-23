@@ -51,21 +51,74 @@ print(f"Data loaded: {df.shape[0]} rows, {df.shape[1]} columns")
 # -----------------------------
 income_col = 'HHINCOME'
 rent_col = 'RENTGRS'
-weeks_col = 'WKSWORK1'   # FIXED
+weeks_col = 'WKSWORK1'
 empstat_col = 'EMPSTAT'
 target = 'rent_burdened'
 
 # -----------------------------
+# Missingness Exploration
+# -----------------------------
+
+# Examining the extent and pattern of missingness across key variables
+print("\n---MISSINGNESS ANALYSIS---")
+missing_summary = pd.DataFrame({
+    'Missing Count': df.isnull().sum(),
+    'Missing %': (df.isnull().mean() * 100).round(2)
+})
+missing_summary = missing_summary[missing_summary['Missing Count'] > 0].sort_values('Missing %', ascending=False)
+print(missing_summary)
+missing_summary.to_csv(os.path.join(results_folder, 'missing_summary.csv'))
+
+# Check IPUMS sentinel values for missing income and rent
+print(f"\nHHINCOME = 9999999 (IPUMS missing code) count: {(df[income_col] == 9999999).sum()}")
+print(f"RENTGRS = 0 (non-renter or N/A) count: {(df[rent_col] == 0).sum()}")
+
+# Replacing IPUMS sentinel income values with NaN
+df[income_col] = df[income_col].replace(9999999, np.nan)
+
+# Missingness by variable
+key_vars = [income_col, rent_col, weeks_col, empstat_col]
+print("\nMissingness in key variables after sentinel replacement:")
+for var in key_vars:
+    if var in df.columns:
+        n_missing = df[var].isnull().sum()
+        pct = n_missing / len(df) * 100
+        print(f"{var}: {n_missing} ({pct:.2f}%)")
+
+# Median applied to remaining Nans in continuous variables because the distribution is highly right-skewed.
+# Replaces missing values instead of removing rows
+
+for var in key_vars:
+    if var in df.columns:
+        n_missing = df[var].isnull().sum()
+        pct = n_missing / len(df) * 100
+        print(f"{var}: {n_missing} missing ({pct:.2f}%)")
+
+# -----------------------------
+# Restricting to Renter Households
+# -----------------------------
+
+# Non-renters (RENTGRS == 0) are excluded because they cannot be rent-burdened because they are not paying rent and
+# would inflate the negative class and worsen class imbalance
+
+n_before = len(df)
+df = df[df[rent_col] > 0].copy()
+n_after = len(df)
+print(f"\nRestricted to renter households: {n_before - n_after} non-renters removed ({n_before} -> {n_after}) rows")
+
+# -----------------------------
 # Create rent_burdened
 # -----------------------------
+
 df[target] = np.where(
-    (df[income_col] > 0) & (df[rent_col] / df[income_col] > 0.3),
+    df[income_col] <= 0,
     1,
-    0
+    np.where(df[rent_col] / df[income_col] > 0.3, 1, 0)
 )
 
 print("\nrent_burdened value counts:")
 print(df[target].value_counts())
+print(f"Positive class rate (rent burdened): {df[target].mean():.4f}")
 
 # -----------------------------
 # Create UNSTABLE_EMPLOYMENT
@@ -87,7 +140,7 @@ print(df['UNSTABLE_EMPLOYMENT'].value_counts())
 # Positive class baseline
 # -----------------------------
 baseline = df[target].mean()
-print("Positive class baseline:", baseline)
+print("Positive class baseline (renter-only dataset):, {baseline:.4f}")
 
 # -----------------------------
 # Select variables
@@ -134,27 +187,27 @@ for var in continuous_vars:
 # VISUALIZATIONS
 # -----------------------------
 
-# Use sample for speed (VERY IMPORTANT with 16M rows)
+# Use sample for speed
 df_sample = df.sample(n=50000, random_state=42)
 
 # 1. Income histogram
 plt.figure()
 sns.histplot(df_sample[income_col], bins=50, kde=True)
-plt.title("Household Income Distribution")
+plt.title("Household Income Distribution (Renters Only)")
 plt.savefig(os.path.join(results_folder, "income_hist.png"))
 plt.close()
 
 # 2. Rent histogram
 plt.figure()
 sns.histplot(df_sample[rent_col], bins=50, kde=True)
-plt.title("Rent Distribution")
+plt.title("Rent Distribution (Renters Only)")
 plt.savefig(os.path.join(results_folder, "rent_hist.png"))
 plt.close()
 
 # 3. Employment bar chart
 plt.figure()
 sns.countplot(x='UNSTABLE_EMPLOYMENT', data=df_sample)
-plt.title("Unstable Employment")
+plt.title("Unstable Employment (Renters Only)")
 plt.savefig(os.path.join(results_folder, "unstable_employment.png"))
 plt.close()
 
@@ -183,6 +236,26 @@ sns.pairplot(pairplot_sample, diag_kind='kde', hue=target)
 plt.savefig(os.path.join(results_folder, "pairplot.png"))
 plt.close()
 
+
+# 7. Rent burden rate by year
+
+if 'YEAR' in df.columns:
+    rent_by_year = df.groupby('YEAR')[target].mean().reset_index()
+    rent_by_year.columns = ['YEAR', 'rent_burden_rate']
+
+    plt.figure(figsize=(10,5))
+    sns.lineplot(data=rent_by_year, x='YEAR', y='rent_burden_rate', marker ='o')
+    plt.title("Rent Burden per Year (Renter's Only)")
+    plt.xlabel("Year")
+    plt.ylabel("Proportion Rent Burdened")
+    plt.tight_layout()
+    plt.savefig(os.path.join(results_folder, "rent_burden_per_year.png"))
+    plt.close()
+    print("\nRent burden by year:")
+    print(rent_by_year)
+else:
+    print("Warning: 'YEAR' column not found - skipping rent burden by year plot.")
+
 print("\n✅ EDA COMPLETE — all outputs saved.")
 print("EDA completed and figures saved.")
 
@@ -196,6 +269,9 @@ SELF TEST: AH on Local Machine
 - Script runs successfully on Pycharm
 - No runtime errors during full EDA pipeline execution
 - Dataset loaded successfully from local IPUMS CSV file
+- Missingness explored before imputation
+- IPUMS sentinel value (9999999) for HHINCOME replaced with NaN
+- Non-renter households (RENTGRS == 0) excluded before target variable creation
 - Target variable (rent_burdened) created without errors
 - UNSTABLE_EMPLOYMENT feature generated successfully
 - Summary statistics computed for both categorical and continuous variables
