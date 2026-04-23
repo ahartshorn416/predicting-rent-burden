@@ -36,15 +36,19 @@ import os
 # Settings
 # -----------------------------
 sns.set(style="whitegrid")
-results_folder = r"C:\Users\alica\OneDrive\Documents\prediciting_rent_burden_shocks\results"
-os.makedirs(results_folder, exist_ok=True)
+results_folder = r"C:\Users\alica\OneDrive\Documents\predicting-rent-burden\results"
 
 # -----------------------------
 # Load Data
 # -----------------------------
-data_path = r"C:\\Users\\alica\\Downloads\\usa_00003.csv"
+data_path = r"C:\Users\alica\Downloads\usa_00003.csv"
+cols_needed = ['MULTYEAR', 'HHINCOME', 'RENTGRS', 'WKSWORK1', 'EMPSTAT',
+               'AGE', 'EDUC', 'SEX', 'RACE', 'OWNERSHP']
 df = pd.read_csv(data_path)
 print(f"Data loaded: {df.shape[0]} rows, {df.shape[1]} columns")
+
+print(df.head())
+print(df.tail())
 
 # -----------------------------
 # Key Columns
@@ -53,6 +57,7 @@ income_col = 'HHINCOME'
 rent_col = 'RENTGRS'
 weeks_col = 'WKSWORK1'
 empstat_col = 'EMPSTAT'
+year_col = 'MULTYEAR'
 target = 'rent_burdened'
 
 # -----------------------------
@@ -239,12 +244,12 @@ plt.close()
 
 # 7. Rent burden rate by year
 
-if 'YEAR' in df.columns:
-    rent_by_year = df.groupby('YEAR')[target].mean().reset_index()
-    rent_by_year.columns = ['YEAR', 'rent_burden_rate']
+if 'MULTYEAR' in df.columns:
+    rent_by_year = df.groupby('MULTYEAR')[target].mean().reset_index()
+    rent_by_year.columns = ['MULTYEAR', 'rent_burden_rate']
 
     plt.figure(figsize=(10,5))
-    sns.lineplot(data=rent_by_year, x='YEAR', y='rent_burden_rate', marker ='o')
+    sns.lineplot(data=rent_by_year, x='MULTYEAR', y='rent_burden_rate', marker ='o')
     plt.title("Rent Burden per Year (Renter's Only)")
     plt.xlabel("Year")
     plt.ylabel("Proportion Rent Burdened")
@@ -254,7 +259,7 @@ if 'YEAR' in df.columns:
     print("\nRent burden by year:")
     print(rent_by_year)
 else:
-    print("Warning: 'YEAR' column not found - skipping rent burden by year plot.")
+    print("Warning: 'MULTYEAR' column not found - skipping rent burden by year plot.")
 
 print("\n✅ EDA COMPLETE — all outputs saved.")
 print("EDA completed and figures saved.")
