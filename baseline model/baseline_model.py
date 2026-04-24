@@ -80,8 +80,12 @@ df['UNSTABLE_EMPLOYMENT'] = np.where(
 )
 
 features = [
-    'log_income', 'log_rent', 'rent_income_ratio',
-    'AGE', 'EDUC', 'SEX', 'RACE', 'WKSWORK1', 'UNSTABLE_EMPLOYMENT'
+    'AGE',
+    'EDUC',
+    'SEX',
+    'RACE',
+    'WKSWORK1',
+    'UNSTABLE_EMPLOYMENT'
 ]
 target = 'rent_burdened'
 
