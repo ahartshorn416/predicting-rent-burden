@@ -1,0 +1,11 @@
+params,mean_test_score,std_test_score,rank_test_score
+"{'l2_regularization': np.float64(0.1454599737656805), 'learning_rate': np.float64(0.05301281177361809), 'max_depth': 6, 'max_iter': 200, 'max_leaf_nodes': 63, 'min_samples_leaf': 58}",0.7767405614557246,0.0025192018826149408,1
+"{'l2_regularization': np.float64(0.012773001776171355), 'learning_rate': np.float64(0.061560888611986816), 'max_depth': 6, 'max_iter': 300, 'max_leaf_nodes': None, 'min_samples_leaf': 53}",0.7765701327474914,0.002021853521163768,2
+"{'l2_regularization': np.float64(0.24936886087152876), 'learning_rate': np.float64(0.11361224381200595), 'max_depth': 4, 'max_iter': 200, 'max_leaf_nodes': 31, 'min_samples_leaf': 72}",0.7764905496364019,0.0019701741616306974,3
+"{'l2_regularization': np.float64(0.4198197282067113), 'learning_rate': np.float64(0.09197497490874598), 'max_depth': 6, 'max_iter': 300, 'max_leaf_nodes': 63, 'min_samples_leaf': 71}",0.7764786274552071,0.001831805594026054,4
+"{'l2_regularization': np.float64(0.6738278196759988), 'learning_rate': np.float64(0.10095574400655782), 'max_depth': 4, 'max_iter': 200, 'max_leaf_nodes': 63, 'min_samples_leaf': 57}",0.7756031557626126,0.0023836206490242436,5
+"{'l2_regularization': np.float64(0.628140769114411), 'learning_rate': np.float64(0.05594128078850476), 'max_depth': 5, 'max_iter': 100, 'max_leaf_nodes': None, 'min_samples_leaf': 60}",0.7753904395686443,0.0017883140084706682,6
+"{'l2_regularization': np.float64(0.5207107783590823), 'learning_rate': np.float64(0.030154084224878044), 'max_depth': 6, 'max_iter': 200, 'max_leaf_nodes': 63, 'min_samples_leaf': 11}",0.7753210614947676,0.0026090184980182836,7
+"{'l2_regularization': np.float64(0.5442460308702238), 'learning_rate': np.float64(0.10108986535451774), 'max_depth': 4, 'max_iter': 100, 'max_leaf_nodes': 63, 'min_samples_leaf': 18}",0.7751538147375939,0.0018971575853964165,8
+"{'l2_regularization': np.float64(0.29963209507789), 'learning_rate': np.float64(0.1911285751537849), 'max_depth': 5, 'max_iter': 100, 'max_leaf_nodes': 31, 'min_samples_leaf': 33}",0.7748897248805031,0.0017164885994358668,9
+"{'l2_regularization': np.float64(0.39614152808901615), 'learning_rate': np.float64(0.02618993380073931), 'max_depth': 4, 'max_iter': 100, 'max_leaf_nodes': 63, 'min_samples_leaf': 13}",0.7702627690391555,0.003687134190037599,10
