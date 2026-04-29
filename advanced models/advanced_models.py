@@ -24,6 +24,7 @@ from sklearn.metrics import (
     RocCurveDisplay, PrecisionRecallDisplay,
 )
 from sklearn.model_selection import train_test_split, StratifiedKFold, RandomizedSearchCV
+from sklearn.base import BaseEstimator, ClassifierMixin
 from scipy.stats import randint, uniform
 
 # -----------------------------
@@ -215,28 +216,69 @@ rf_roc, rf_pr = evaluate("Random Forest", best_rf, X_test, y_test,
 # ================================================================
 # MODEL 2: GRADIENT BOOSTING (HistGradientBoosting)
 # ================================================================
-print("\n" + "="*60, flush=True)
-print("GRADIENT BOOSTING — searching on subsample (n_iter=10)...", flush=True)
-print("="*60, flush=True)
 
-pos_w        = (y_tune == 0).sum() / (y_tune == 1).sum()
-tune_weights = np.where(y_tune == 1, pos_w, 1.0)
-print(f"  Positive class upweight: {pos_w:.1f}x", flush=True)
+
+class BalancedHGB(BaseEstimator, ClassifierMixin):
+    """
+    HistGradientBoostingClassifier wrapper that computes balanced
+    sample weights internally during fit(), preventing weight leakage
+    into RandomizedSearchCV's scoring step.
+    """
+
+    def __init__(self, max_iter=100, max_depth=None, learning_rate=0.1,
+                 min_samples_leaf=20, l2_regularization=0.0,
+                 max_leaf_nodes=31, random_state=42):
+        self.max_iter = max_iter
+        self.max_depth = max_depth
+        self.learning_rate = learning_rate
+        self.min_samples_leaf = min_samples_leaf
+        self.l2_regularization = l2_regularization
+        self.max_leaf_nodes = max_leaf_nodes
+        self.random_state = random_state
+
+    def fit(self, X, y):
+        # Compute balanced weights from y at fit time — never from outside
+        neg, pos = (y == 0).sum(), (y == 1).sum()
+        w = np.where(y == 1, neg / pos, 1.0)
+        self.model_ = HistGradientBoostingClassifier(
+            max_iter=self.max_iter,
+            max_depth=self.max_depth,
+            learning_rate=self.learning_rate,
+            min_samples_leaf=self.min_samples_leaf,
+            l2_regularization=self.l2_regularization,
+            max_leaf_nodes=self.max_leaf_nodes,
+            random_state=self.random_state,
+        )
+        self.model_.fit(X, y, sample_weight=w)
+        self.classes_ = self.model_.classes_
+        return self
+
+    def predict(self, X):
+        return self.model_.predict(X)
+
+    def predict_proba(self, X):
+        return self.model_.predict_proba(X)
+
+
+print("\n" + "=" * 60, flush=True)
+print("GRADIENT BOOSTING — searching on subsample (n_iter=10)...", flush=True)
+print("=" * 60, flush=True)
+print("  (sample_weight computed inside fit() — no leakage into CV scorer)", flush=True)
 
 gb_params = {
-    'max_iter':          [100, 200, 300],
-    'max_depth':         randint(3, 7),
-    'learning_rate':     uniform(0.02, 0.18),
-    'min_samples_leaf':  randint(10, 80),
+    'max_iter': [100, 200, 300],
+    'max_depth': randint(3, 7),
+    'learning_rate': uniform(0.02, 0.18),
+    'min_samples_leaf': randint(10, 80),
     'l2_regularization': uniform(0, 0.8),
-    'max_leaf_nodes':    [31, 63, None],
+    'max_leaf_nodes': [31, 63, None],
 }
 
 gb_search = RandomizedSearchCV(
-    HistGradientBoostingClassifier(random_state=42),
+    BalancedHGB(random_state=42),
     param_distributions=gb_params,
     n_iter=10,
-    scoring='average_precision',
+    scoring='average_precision',  # now scores on natural class distribution
     cv=cv5,
     random_state=42,
     n_jobs=-1,
@@ -245,8 +287,8 @@ gb_search = RandomizedSearchCV(
 )
 
 t0 = time.time()
-gb_search.fit(X_tune, y_tune, sample_weight=tune_weights)
-print(f"  Search done in {(time.time()-t0)/60:.1f} min", flush=True)
+gb_search.fit(X_tune, y_tune)  # no sample_weight here — wrapper handles it
+print(f"  Search done in {(time.time() - t0) / 60:.1f} min", flush=True)
 print(f"  Best params: {gb_search.best_params_}", flush=True)
 print(f"  Best CV PR-AUC: {gb_search.best_score_:.4f}", flush=True)
 
@@ -257,15 +299,13 @@ pd.DataFrame(gb_search.cv_results_)[
 )
 
 print(f"\nRefitting GB on full training set...", flush=True)
-full_w  = np.where(y_train == 1, (y_train == 0).sum() / (y_train == 1).sum(), 1.0)
 t0 = time.time()
-best_gb = HistGradientBoostingClassifier(**gb_search.best_params_, random_state=42)
-best_gb.fit(X_train, y_train, sample_weight=full_w)
-print(f"  GB refit done in {(time.time()-t0)/60:.1f} min", flush=True)
+best_gb = BalancedHGB(**gb_search.best_params_, random_state=42)
+best_gb.fit(X_train, y_train)  # weights computed internally from full y_train
+print(f"  GB refit done in {(time.time() - t0) / 60:.1f} min", flush=True)
 
 gb_roc, gb_pr = evaluate("Gradient Boosting", best_gb, X_test, y_test,
-                          baseline_prauc, output_dir, features)
-
+                         baseline_prauc, output_dir, features)
 
 # ================================================================
 # COMPARISON TABLE
