@@ -30,6 +30,7 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import StratifiedKFold, cross_validate
 from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 
 # -----------------------------
 # Path Settings
@@ -215,11 +216,18 @@ plt.close()
 # Stratified to preserve class imbalance ratio across folds
 # -----------------------------
 print("\n--- CROSS-VALIDATION (k=5) ---")
+
+cv_pipeline = Pipeline([
+    ('scaler', StandardScaler()),
+    ('model', LogisticRegression(max_iter=1000, class_weight='balanced', random_state=42))
+])
+
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
 cv_results = cross_validate(
-    LogisticRegression(max_iter=1000, class_weight='balanced', random_state=42),
-    X_train_scaled, y_train,
+    cv_pipeline,
+    X_train,        # ← line 223: change X_train_scaled to X_train
+    y_train,
     cv=cv,
     scoring=['roc_auc', 'average_precision'],
     return_train_score=True
