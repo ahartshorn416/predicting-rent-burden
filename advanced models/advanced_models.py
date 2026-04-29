@@ -9,11 +9,17 @@ Fairness Analysis
 Fits Random Forest and Gradient Boosting classifiers. Hyperparameter search runs on
 a 5% stratified subsample; best params are refit on the full training set.
 RF is capped at 150 trees to keep runtime manageable on 2.85M rows.
+
+After model comparison, fairness analysis is run directly on the fitted best model (GB),
+no hardcoded params required. Metrics computed per RACE and SEX subgroup:
+Positive Prediction Rate (demographic parity), TPR and FPR (equalized odds), and
+PR-AUC. Disparity summaries use White and Male as reference groups.
 """
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
 import os, warnings, time
 warnings.filterwarnings('ignore')
 
@@ -339,5 +345,181 @@ plt.tight_layout()
 plt.savefig(os.path.join(output_dir, "model_comparison.png"))
 plt.close()
 
+# ================================================================
+# FAIRNESS ANALYSIS
+# ================================================================
+print("\n" + "=" * 60, flush=True)
+print("FAIRNESS ANALYSIS — Gradient Boosting (best model)", flush=True)
+print("=" * 60, flush=True)
+
+# ACS IPUMS RACE codes
+race_map = {
+    1: 'White', 2: 'Black', 3: 'American Indian',
+    4: 'Chinese', 5: 'Japanese', 6: 'Other Asian/PI',
+    7: 'Other', 8: 'Two+ Races', 9: 'Three+ Races',
+}
+sex_map = {1: 'Male', 2: 'Female'}
+
+# Build test dataframe with predictions and demographic labels
+df_test = df_model.loc[X_test.index].copy()
+df_test['y_true'] = y_test.values
+df_test['y_pred'] = best_gb.predict(X_test)
+df_test['y_prob'] = best_gb.predict_proba(X_test)[:, 1]
+df_test['RACE_label'] = df_test['RACE'].map(race_map).fillna('Unknown')
+df_test['SEX_label'] = df_test['SEX'].map(sex_map).fillna('Unknown')
+
+overall_prauc = average_precision_score(df_test['y_true'], df_test['y_prob'])
+overall_ppr = df_test['y_pred'].mean()
+overall_tpr = ((df_test['y_pred'] == 1) & (df_test['y_true'] == 1)).sum() / \
+              (df_test['y_true'] == 1).sum()
+overall_fpr = ((df_test['y_pred'] == 1) & (df_test['y_true'] == 0)).sum() / \
+              (df_test['y_true'] == 0).sum()
+
+
+# -----------------------------
+# Subgroup metrics helper
+# -----------------------------
+def subgroup_metrics(df_sub, group_col, attribute_label, min_n=200):
+    rows = []
+    for group, gdf in df_sub.groupby(group_col):
+        if len(gdf) < min_n:
+            continue
+        yt, yp, yb = gdf['y_true'].values, gdf['y_pred'].values, gdf['y_prob'].values
+        tp = ((yp == 1) & (yt == 1)).sum()
+        fn = ((yp == 0) & (yt == 1)).sum()
+        fp = ((yp == 1) & (yt == 0)).sum()
+        tn = ((yp == 0) & (yt == 0)).sum()
+        rows.append({
+            'Group': group,
+            'n': len(gdf),
+            'Prevalence': yt.mean(),
+            'PPR': yp.mean(),
+            'TPR': tp / (tp + fn) if (tp + fn) > 0 else np.nan,
+            'FPR': fp / (fp + tn) if (fp + tn) > 0 else np.nan,
+            'PR_AUC': average_precision_score(yt, yb) if yt.sum() > 0 else np.nan,
+        })
+    result = pd.DataFrame(rows).sort_values('Group')
+    result.insert(0, 'Attribute', attribute_label)
+    return result
+
+
+# -----------------------------
+# Disparity summary helper
+# -----------------------------
+def disparity_summary(metrics_df, ref_group, attribute_name):
+    ref = metrics_df[metrics_df['Group'] == ref_group]
+    if ref.empty:
+        print(f"  Reference group '{ref_group}' not found.", flush=True)
+        return pd.DataFrame()
+    ref_ppr, ref_tpr, ref_fpr = ref['PPR'].values[0], ref['TPR'].values[0], ref['FPR'].values[0]
+    rows = []
+    for _, row in metrics_df.iterrows():
+        rows.append({
+            'Attribute': attribute_name,
+            'Group': row['Group'],
+            'n': row['n'],
+            'Prevalence': row['Prevalence'],
+            'PPR': row['PPR'],
+            'TPR': row['TPR'],
+            'FPR': row['FPR'],
+            'PR_AUC': row['PR_AUC'],
+            'DP_diff': row['PPR'] - ref_ppr,
+            'DP_ratio': row['PPR'] / ref_ppr if ref_ppr > 0 else np.nan,
+            'EO_TPR_diff': row['TPR'] - ref_tpr,
+            'EO_FPR_diff': row['FPR'] - ref_fpr,
+        })
+    return pd.DataFrame(rows)
+
+
+# -----------------------------
+# Compute metrics
+# -----------------------------
+race_metrics = subgroup_metrics(df_test, 'RACE_label', 'RACE')
+sex_metrics = subgroup_metrics(df_test, 'SEX_label', 'SEX')
+
+print("\n--- RACE FAIRNESS METRICS ---", flush=True)
+print(race_metrics.to_string(index=False), flush=True)
+print("\n--- SEX FAIRNESS METRICS ---", flush=True)
+print(sex_metrics.to_string(index=False), flush=True)
+
+pd.concat([race_metrics, sex_metrics], ignore_index=True).to_csv(
+    os.path.join(output_dir, "fairness_metrics.csv"), index=False
+)
+
+race_disparity = disparity_summary(race_metrics, ref_group='White', attribute_name='RACE')
+sex_disparity = disparity_summary(sex_metrics, ref_group='Male', attribute_name='SEX')
+
+print("\n--- DISPARITY SUMMARY (ref: White / Male) ---", flush=True)
+for disp, name in [(race_disparity, 'RACE'), (sex_disparity, 'SEX')]:
+    print(f"\n  {name}", flush=True)
+    print(disp[['Group', 'n', 'PPR', 'DP_diff', 'DP_ratio',
+                'TPR', 'EO_TPR_diff', 'FPR', 'EO_FPR_diff']].to_string(index=False), flush=True)
+
+pd.concat([race_disparity, sex_disparity], ignore_index=True).to_csv(
+    os.path.join(output_dir, "fairness_disparity.csv"), index=False
+)
+
+
+# -----------------------------
+# Fairness plots
+# -----------------------------
+def bar_chart(metrics_df, metric, title, ylabel, filename, overall_val=None,
+              overall_label=None, pct=False):
+    fig, ax = plt.subplots(figsize=(10, 5))
+    colors = ['#d73027' if g in ('White', 'Male') else '#4575b4'
+              for g in metrics_df['Group']]
+    ax.bar(metrics_df['Group'], metrics_df[metric], color=colors, edgecolor='white')
+    if overall_val is not None:
+        ax.axhline(overall_val, linestyle='--', color='black', linewidth=1.0,
+                   label=f'Overall ({overall_label}: {overall_val:.3f})')
+        ax.legend(fontsize=9)
+    ax.set_title(title, fontsize=13, fontweight='bold')
+    ax.set_ylabel(ylabel)
+    plt.xticks(rotation=30, ha='right', fontsize=9)
+    if pct:
+        ax.yaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=0))
+    ax.set_ylim(0, metrics_df[metric].max() * 1.25)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, filename), dpi=150)
+    plt.close()
+
+
+print("\nGenerating fairness plots...", flush=True)
+
+for grp, metrics in [('race', race_metrics), ('sex', sex_metrics)]:
+    bar_chart(metrics, 'PPR', f'Positive Prediction Rate by {grp.title()} (Demographic Parity)',
+              'Predicted Positive Rate', f'fairness_{grp}_ppr.png',
+              overall_val=overall_ppr, overall_label='overall PPR', pct=True)
+    bar_chart(metrics, 'TPR', f'True Positive Rate by {grp.title()} (Equalized Odds — Opportunity)',
+              'True Positive Rate (Recall)', f'fairness_{grp}_tpr.png',
+              overall_val=overall_tpr, overall_label='overall TPR', pct=True)
+    bar_chart(metrics, 'FPR', f'False Positive Rate by {grp.title()} (Equalized Odds — Harm)',
+              'False Positive Rate', f'fairness_{grp}_fpr.png',
+              overall_val=overall_fpr, overall_label='overall FPR', pct=True)
+    bar_chart(metrics, 'PR_AUC', f'PR-AUC by {grp.title()}',
+              'PR-AUC', f'fairness_{grp}_prauc.png',
+              overall_val=overall_prauc, overall_label='overall PR-AUC')
+
+# Diverging disparity chart for race
+fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+for ax, col, label in zip(
+        axes,
+        ['DP_diff', 'EO_TPR_diff'],
+        ['Demographic Parity Difference\n(PPR − White PPR)',
+         'Equalized Odds Difference\n(TPR − White TPR)']
+):
+    sub = race_disparity[race_disparity['Group'] != 'Unknown'].copy()
+    colors = ['#d73027' if v > 0 else '#4575b4' for v in sub[col]]
+    ax.barh(sub['Group'], sub[col], color=colors, edgecolor='white')
+    ax.axvline(0, color='black', linewidth=0.8)
+    ax.set_title(label, fontsize=11, fontweight='bold')
+    ax.set_xlabel('Difference from White reference group')
+    ax.xaxis.set_major_formatter(mtick.PercentFormatter(xmax=1, decimals=1))
+plt.suptitle('Racial Disparity in Model Predictions (Reference: White)',
+             fontsize=13, fontweight='bold', y=1.02)
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, "fairness_race_disparity.png"), dpi=150, bbox_inches='tight')
+plt.close()
+
 print(f"\nAll outputs saved to: {output_dir}", flush=True)
-print("\n✅ Advanced models complete.", flush=True)
+print("\n✅ Advanced models + fairness analysis complete.", flush=True)
