@@ -1,7 +1,7 @@
 # 🏠 Predicting Rent Burden in U.S. Households Using Machine Learning & Fairness Analysis
 
 ## 📌 Overview
-This project analyzes whether U.S. households are rent burdened—defined as spending more than 30% of household income on rent—using large-scale survey data and machine learning techniques. In addition to predicting rent burden status, the project evaluates how model performance varies across demographic groups to assess fairness and equity.
+This project analyzes whether U.S. households are rent burdened — defined as spending more than 30% of household income on rent — using large-scale survey data and machine learning techniques. In addition to predicting rent burden status, the project evaluates how model performance varies across demographic groups to assess fairness and equity.
 
 The goal is to generate insights that can support policymakers in identifying at-risk households and improving housing affordability strategies.
 
@@ -13,27 +13,29 @@ Can machine learning models predict which U.S. households are rent burdened, and
 ---
 
 ## 🎯 Objectives
-- Predict rent burden status using machine learning models  
-- Identify key drivers of housing affordability  
-- Evaluate model performance across demographic groups  
-- Assess fairness using multiple metrics  
-- Provide policy-relevant insights  
+- Predict rent burden status using machine learning models
+- Identify key drivers of housing affordability
+- Evaluate model performance across demographic groups
+- Assess fairness using multiple metrics
+- Provide policy-relevant insights
 
 ---
 
 ## 📊 Data Source
-- **Dataset:** 2024 American Community Survey (ACS) 5-Year PUMS  
-- **Access:** IPUMS USA  
-- **Format:** `.dat` file processed into a structured dataset using Python  
+- **Dataset:** 2024 American Community Survey (ACS) 5-Year PUMS
+- **Access:** IPUMS USA
+- **Format:** `.csv` file processed into a structured dataset using Python
 - **Size:** ~16 million observations (restricted to ~3.56M renter-only households for modeling)
 
 ---
 
 ## 🧾 Selected Variables
+```
 YEAR, MULTYEAR, SAMPLE, SERIAL, CBSERIAL,
 STATEFIP, PUMA, OWNERSHP, RENTGRS, HHINCOME,
 ROOMS, BEDROOMS, SEX, AGE, RACE, EDUC,
 EMPSTAT, WKSWORK1, OCC
+```
 
 ---
 
@@ -65,19 +67,19 @@ rent_burdened = 1 if (RENTGRS / HHINCOME) > 0.3 else 0
 ---
 
 ## 📈 Exploratory Data Analysis (EDA)
-- Generated summary tables for categorical and continuous variables  
-- Assessed skewness and kurtosis for continuous variables  
+- Generated summary tables for categorical and continuous variables
+- Assessed skewness and kurtosis for continuous variables
 - Visualizations included:
-  - Histograms  
-  - Boxplots  
-  - Correlation matrix  
-  - Pairplots (sampled due to dataset size)  
+  - Histograms
+  - Boxplots
+  - Correlation matrix
+  - Pairplots (sampled due to dataset size)
 
 ---
 
 ## 🤖 Models
 
-### ✅ Baseline: Logistic Regression (Complete)
+### ✅ Baseline: Logistic Regression
 
 The baseline logistic regression model was trained on 6 demographic and employment features: `AGE`, `EDUC`, `SEX`, `RACE`, `WKSWORK1`, and `UNSTABLE_EMPLOYMENT`. Income and rent variables were excluded to prevent target leakage. `class_weight='balanced'` was used to address the 3.65% positive class rate without resampling.
 
@@ -85,9 +87,9 @@ The baseline logistic regression model was trained on 6 demographic and employme
 
 | Metric | Value | Notes |
 |--------|-------|-------|
-| ROC-AUC | 0.7730 | Solid discriminative ability for a baseline |
-| PR-AUC | 0.0967 | ~2.6x above naive baseline (0.0365) |
-| Naive Baseline PR-AUC | 0.0365 | Positive class rate in training set |
+| ROC-AUC | 0.773 | Solid discriminative ability for a baseline |
+| PR-AUC | 0.097 | ~2.6x above naive baseline (0.037) |
+| Naive Baseline PR-AUC | 0.037 | Positive class rate in training set |
 | Accuracy | 0.54 | Low due to `class_weight='balanced'` tradeoff |
 | Precision (class 1) | 0.07 | Many false positives; wide net cast |
 | Recall (class 1) | 0.92 | 92% of rent-burdened households identified |
@@ -117,84 +119,166 @@ The baseline logistic regression model was trained on 6 demographic and employme
 
 Training and validation scores are nearly identical across all folds, indicating no evidence of overfitting.
 
-**Key takeaway:** The baseline achieves a PR-AUC ~2.6x above the naive baseline with 92% recall on the minority class. Precision (0.07) is the primary weakness and is expected to improve with tree-based models. The positive coefficient on education is unexpected and will be investigated further.
+---
 
-### 🔜 Upcoming Models
-- Random Forest  
-- Gradient Boosting  
+### ✅ Advanced Models: Random Forest & Gradient Boosting
+
+Both models used the same leakage-free 6-feature set as the baseline. Hyperparameter tuning was performed via `RandomizedSearchCV` with 5-fold stratified cross-validation, optimizing for `average_precision` (PR-AUC). To avoid timeout on the 2.85M-row training set, search was conducted on a stratified 5% subsample (~142,585 rows); best parameters were then refit on the full training set.
+
+#### Hyperparameter Tuning — Random Forest
+
+`class_weight='balanced_subsample'` was used (per-tree balancing; more appropriate than global reweighting for bagging ensembles).
+
+| Hyperparameter | Best Value | Search Range |
+|----------------|-----------|--------------|
+| n_estimators | 100 | [100, 150] |
+| max_depth | 10 | [10, 20, None] |
+| min_samples_split | 11 | randint(2, 15) |
+| min_samples_leaf | 7 | randint(1, 8) |
+| max_features | sqrt | ['sqrt', 'log2'] |
+
+#### Hyperparameter Tuning — Gradient Boosting
+
+`HistGradientBoostingClassifier` was used for its speed on large datasets. A custom `BalancedHGB` wrapper computed balanced sample weights internally during `fit()` to prevent weight leakage into the CV scorer (passing `sample_weight` via `fit_params` inflated CV PR-AUC from ~0.15 to ~0.78).
+
+| Hyperparameter | Best Value | Search Range |
+|----------------|-----------|--------------|
+| max_iter | 100 | [100, 200, 300] |
+| max_depth | 5 | randint(3, 7) |
+| learning_rate | 0.191 | uniform(0.02, 0.18) |
+| min_samples_leaf | 33 | randint(10, 80) |
+| l2_regularization | 0.300 | uniform(0, 0.8) |
+| max_leaf_nodes | 31 | [31, 63, None] |
+
+#### Model Comparison (Test Set, n = 712,928)
+
+| Model | ROC-AUC | PR-AUC | PR-AUC Lift vs. Naive |
+|-------|---------|--------|-----------------------|
+| Logistic Regression (Baseline) | 0.773 | 0.097 | 2.65x |
+| Random Forest | 0.809 | 0.146 | 4.00x |
+| **Gradient Boosting** ✅ | **0.810** | **0.148** | **4.06x** |
+
+**Gradient Boosting was selected as the best model.** It achieves the highest PR-AUC on the minority class (the primary evaluation criterion) and its sequential residual correction is theoretically better suited than bagging for imbalanced classification.
+
+#### Feature Importances (Random Forest)
+
+| Feature | Importance |
+|---------|-----------|
+| WKSWORK1 | 0.494 |
+| UNSTABLE_EMPLOYMENT | 0.342 |
+| AGE | 0.093 |
+| RACE | 0.034 |
+| EDUC | 0.033 |
+| SEX | 0.004 |
+
+`WKSWORK1` and `UNSTABLE_EMPLOYMENT` together account for 83.6% of model decisions, strongly consistent with the hypothesis that labor market instability is the primary driver of rent burden.
+
+---
+
+## ⚖️ Fairness Analysis
+
+Fairness analysis was conducted on the best Gradient Boosting model using the held-out test set. Three metrics were computed per subgroup:
+- **PPR** (Positive Prediction Rate) — demographic parity proxy
+- **TPR** (True Positive Rate / Recall) — equalized odds, opportunity
+- **FPR** (False Positive Rate) — equalized odds, harm
+
+Reference groups: White (RACE), Male (SEX).
+
+#### Race Subgroup Results
+
+| Group | n | Prevalence | PPR | TPR | FPR | PR-AUC |
+|-------|---|-----------|-----|-----|-----|--------|
+| White (ref) | 364,374 | 3.1% | 31.9% | 77.1% | 30.5% | 0.127 |
+| Black | 106,283 | 5.9% | 55.7% | 95.0% | 53.2% | 0.162 |
+| American Indian | 12,056 | 3.8% | 47.8% | 87.0% | 46.2% | 0.102 |
+| Chinese | 9,695 | 7.7% | 47.3% | 95.3% | 43.4% | 0.431 |
+| Other Asian/PI | 38,482 | 3.4% | 25.8% | 73.5% | 24.1% | 0.184 |
+| Other | 74,381 | 3.2% | 44.5% | 84.5% | 43.2% | 0.091 |
+| Two+ Races | 97,551 | 3.1% | 43.1% | 81.4% | 41.9% | 0.097 |
+| Three+ Races | 8,172 | 3.2% | 43.7% | 80.2% | 42.5% | 0.091 |
+| Japanese | 1,934 | 3.4% | 27.5% | 83.1% | 25.5% | 0.187 |
+
+#### Sex Subgroup Results
+
+| Group | n | Prevalence | PPR | TPR | FPR | PR-AUC |
+|-------|---|-----------|-----|-----|-----|--------|
+| Male (ref) | 339,571 | 3.2% | 34.1% | 81.0% | 32.5% | 0.149 |
+| Female | 373,357 | 4.0% | 42.6% | 84.7% | 40.9% | 0.147 |
+
+#### Key Fairness Findings
+- **Black households** show the largest disparity: PPR of 55.7% vs. 31.9% for White (DP ratio 1.74x), with an FPR gap of +22.7pp — the model generates substantially more false positives for non-burdened Black households
+- **Other Asian/PI households** are under-flagged: negative DP_diff (-0.061) and EO_TPR_diff (-0.035) indicate genuinely burdened households in this group are more likely to be missed
+- **Female households** are over-flagged relative to Male (FPR gap +8.3pp), partially explained by higher true prevalence (4.0% vs. 3.2%)
+- **Chinese households** have the highest PR-AUC (0.431), likely due to higher true prevalence (7.7%) providing more minority-class signal
 
 ---
 
 ## 📊 Evaluation Metrics
-- **Precision-Recall AUC** (primary metric due to class imbalance)  
-- Accuracy  
-- Precision  
-- Recall  
-- F1-score  
-- ROC-AUC  
+- **Precision-Recall AUC** (primary metric due to class imbalance)
+- Accuracy, Precision, Recall, F1-score
+- ROC-AUC
+- Demographic Parity (PPR difference and ratio)
+- Equalized Odds (TPR and FPR differences)
 
 **Positive Class Rate (renter-only dataset):** 3.65%  
 **Naive Baseline PR-AUC:** 0.0365
 
 ---
 
-## ⚖️ Fairness Analysis *(Planned)*
-- Demographic Parity  
-- Equalized Odds  
-- Group-specific Recall  
-
-Evaluated across:
-- Race  
-- Sex  
-- Geographic regions  
-
----
-
 ## 📌 Key Findings
 
 ### EDA Stage
-- Rent burden is rare (~3.65% among renters), indicating strong class imbalance  
-- Income and rent variables are highly skewed, requiring log transformation  
-- ~54% of renter households show unstable employment  
-- Non-renter filtering reduced dataset from 16.1M to 3.6M rows  
+- Rent burden is rare (~3.65% among renters), indicating strong class imbalance
+- Income and rent variables are highly skewed, requiring log transformation
+- ~54% of renter households show unstable employment
+- Non-renter filtering reduced dataset from 16.1M to 3.6M rows
 
 ### Baseline Model Stage
-- Logistic regression achieves ROC-AUC of 0.773 and PR-AUC of 0.097 using only demographic and employment features  
-- Weeks worked (`WKSWORK1`) is the strongest predictor of rent burden (coefficient = -1.288)  
-- Unstable employment is the strongest positive predictor (coefficient = +0.357), consistent with the project hypothesis  
-- High recall (0.92) makes this baseline well-suited for policy screening applications where missing at-risk households is costly  
-- No overfitting detected (mean Val ROC-AUC = 0.773, SD = 0.002 across 5 folds)  
+- Logistic regression achieves ROC-AUC of 0.773 and PR-AUC of 0.097 using only demographic and employment features
+- Weeks worked (`WKSWORK1`) is the strongest predictor (coefficient = -1.288)
+- Unstable employment is the strongest positive predictor (coefficient = +0.357), consistent with the hypothesis
+- No overfitting detected (mean Val ROC-AUC = 0.773, SD = 0.002 across 5 folds)
+
+### Advanced Models Stage
+- Both tree-based models substantially outperform the baseline (~53% relative PR-AUC gain)
+- Gradient Boosting selected as best model (ROC-AUC: 0.810, PR-AUC: 0.148, 4.06x above naive)
+- Labor market features dominate: WKSWORK1 and UNSTABLE_EMPLOYMENT account for 83.6% of RF feature importance
+
+### Fairness Analysis Stage
+- Largest equalized odds violation: Black/White FPR gap of 22.7 percentage points
+- Other Asian/PI households are systematically under-flagged despite similar prevalence to White households
+- Sex disparities exist but are partially explained by true prevalence differences
 
 ---
 
 ## ⚠️ Limitations
-- Cross-sectional data (no time trends)  
-- Self-reported income and rent  
-- Severe class imbalance  
-- Observational data limits causal conclusions  
-- RACE and EDUC treated as ordinal integers in the baseline model; one-hot encoding of RACE will be considered in the fairness analysis phase  
-- Median imputation for HHINCOME may modestly compress income variance near the median (~65,000 rows affected)
+- Cross-sectional data (no time trends)
+- Self-reported income and rent
+- Severe class imbalance (3.65% positive rate)
+- Observational data limits causal conclusions
+- `RACE` treated as ordinal integer — one-hot encoding to be explored in final model phase
+- Median imputation for `HHINCOME` may modestly compress income variance near the median (~65,000 rows affected)
+- Hyperparameter search conducted on 5% subsample due to dataset size; best params refit on full training set
 
 ---
 
 ## 👥 Stakeholder
-- U.S. Department of Housing and Urban Development (HUD)  
+- U.S. Department of Housing and Urban Development (HUD)
 
 ---
 
 ## 🚀 Next Steps
-- Train Random Forest and Gradient Boosting classifiers with hyperparameter tuning via `RandomizedSearchCV`  
-- Investigate positive coefficient on `EDUC` — potential confound with urban residence  
-- Re-introduce income/rent features carefully to measure additional predictive lift above the demographic-only baseline  
-- Conduct fairness analysis across race and sex subgroups using demographic parity and equalized odds  
+- Explore one-hot encoding of `RACE` to address ordinal treatment limitation
+- Synthesize all phases into final deliverable with policy recommendations
+- Investigate positive coefficient on `EDUC` — potential confound with urban residence
 
 ---
 
 ## 📚 Sources
-- U.S. Census Bureau — American Community Survey (ACS)  
-- IPUMS USA — ACS Microdata  
-- HUD — Housing Reports  
-- Joint Center for Housing Studies (Harvard University)  
+- U.S. Census Bureau — American Community Survey (ACS)
+- IPUMS USA — ACS Microdata
+- HUD — Housing Reports
+- Joint Center for Housing Studies (Harvard University)
 
 ---
 
@@ -202,8 +286,8 @@ Evaluated across:
 
 ### 📥 1. Clone or download the repository
 ```bash
-git clone <your-repo-url>
-cd <your-project-folder>
+git clone https://github.com/ahartshorn416/prediciting_rent_burden
+cd prediciting_rent_burden
 ```
 
 ### 📊 2. Download the dataset (REQUIRED)
@@ -213,7 +297,7 @@ This project uses IPUMS ACS microdata, which is not included due to file size.
 Steps:
 1. Go to https://usa.ipums.org/usa/
 2. Create a free account
-3. Select the 2024 ACS 5-Year dataset and the selected variables listed above
+3. Select the 2024 ACS 5-Year dataset and the variables listed above
 4. Download as CSV format
 5. Save it to your local machine
 
@@ -227,7 +311,7 @@ output_dir = r"C:\Users\YOUR_USERNAME\...\results"
 
 ### 📦 4. Install required packages
 ```bash
-pip install pandas numpy scikit-learn matplotlib seaborn
+pip install pandas numpy scikit-learn matplotlib seaborn scipy
 ```
 
 ### ▶️ 5. Run the scripts in order
@@ -235,15 +319,21 @@ pip install pandas numpy scikit-learn matplotlib seaborn
 python eda.py
 python feature_engineering.py
 python baseline_model.py
+python advanced_models.py   # includes fairness analysis
 ```
 
 ### 📂 6. Output files
 
-All outputs will be saved in `/results`, including:
-- Cleaned datasets  
-- Summary tables  
-- Visualizations (ROC curve, PR curve, coefficient plot)  
-- Model-ready datasets  
-- `baseline_metrics.csv` — evaluation metrics  
-- `baseline_coefficients.csv` — logistic regression coefficients  
-- `baseline_cv_results.csv` — cross-validation fold results
+All outputs are saved in `/results`, including:
+
+| File | Description |
+|------|-------------|
+| `baseline_metrics.csv` | Logistic regression evaluation metrics |
+| `baseline_coefficients.csv` | Logistic regression coefficients |
+| `baseline_cv_results.csv` | Cross-validation fold results |
+| `rf_search_results.csv` | Random Forest hyperparameter search results |
+| `gb_search_results.csv` | Gradient Boosting hyperparameter search results |
+| `model_comparison.csv` | ROC-AUC and PR-AUC across all three models |
+| `fairness_metrics.csv` | Per-subgroup PPR, TPR, FPR, PR-AUC |
+| `fairness_disparity.csv` | Disparity measures vs. reference groups |
+| `*.png` | ROC curves, PR curves, feature importance plots, fairness bar charts |
