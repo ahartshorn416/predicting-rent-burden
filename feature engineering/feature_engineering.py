@@ -6,12 +6,20 @@ Team: Iota
 Project Name: Predicting Rent Burden in U.S. Households Using Machine Learning and
 Fairness Analysis
 
-This script builds a machine learning dataset to predict whether U.S. households are rent-burdened by
-loading ACS data, engineering financial and employment features, builds target variable, splitting into train/test sets,
-applying PCA, and exporting the processed datasets for modeling.
+This script builds the dataset I use for all the modeling scripts. The main
+things it does are load and clean the ACS data, build the features and target
+variable, split into train/test sets, scale the features, and run PCA.
+
+A few decisions I made here that are worth flagging:
+  - I originally included log_income, log_rent, and rent_income_ratio in the
+    feature set, but the first run gave me ROC-AUC = 1.0 which was obviously
+    wrong. Those features reconstruct the target directly, so I removed them.
+  - I fit the scaler and PCA on the training set only. Fitting on the full
+    dataset before splitting would leak test set information into the model.
+  - PCA is just for exploration here. I'm not feeding PCA components into
+    the actual models as they train on the original features.
 
 Roles:
-
 - Feature Engineering Function: AH
 - Feature Engineering: AH
 - Select Features: AH
@@ -20,92 +28,59 @@ Roles:
 - Testing & Validation: AH
 """
 
-#  -----------------------------
+# -----------------------------
 # Imports
-#  -----------------------------
+# -----------------------------
 import pandas as pd
 import numpy as np
+import os
+import sys
+
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-import os
 
-#  -----------------------------
+# preprocessing.py lives at the repo root, one level up from this subfolder.
+# This line tells Python where to find it so the import doesn't fail.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# I moved all the cleaning and feature engineering into preprocessing.py
+# so every script uses the exact same definitions. Before I did this,
+# this script had a 9-feature list that included the leaky variables while
+# the modeling scripts had 6. They would have trained on different data
+# without raising any errors.
+from preprocessing import (
+    load_and_clean,
+    build_features,
+    get_feature_list,
+    get_target,
+)
+
+# -----------------------------
 # Path Settings
-#  -----------------------------
-path = r"C:\Users\alica\Downloads\usa_00003.csv"
+# -----------------------------
+path       = r"C:\Users\alica\Downloads\usa_00003.csv"
 output_dir = r"C:\Users\alica\OneDrive\Documents\predicting-rent-burden\results"
 
-#  -----------------------------
-# Load Data
-#  -----------------------------
-cols_needed = ['MULTYEAR', 'HHINCOME', 'RENTGRS', 'WKSWORK1', 'EMPSTAT',
-               'AGE', 'EDUC', 'SEX', 'RACE', 'OWNERSHP']
-
-df = pd.read_csv(path, usecols=cols_needed)
-print(f"Data loaded: {df.shape}")
-
-#  -----------------------------
-# Pre-processing (consistent with EDA)
-#  -----------------------------
-
-# Replace IPUMS sentinel value for missing income with NaN, then median impute
-df['HHINCOME'] = df['HHINCOME'].replace(9999999, np.nan)
-df['HHINCOME'] = df['HHINCOME'].fillna(df['HHINCOME'].median())
-
-# Restrict to renter households only (RENTGRS > 0)
-# Non-renters are excluded because:
-#   1. They cannot be rent-burdened by definition
-#   2. Including them inflates the negative class and worsens class imbalance
-
-n_before = len(df)
-df = df[df['RENTGRS'] > 0].copy()
-print(f"Restricted to renters: {n_before - len(df)} rows removed ({n_before} -> {len(df)})")
-
-#  -----------------------------
-#  Feature Engineering function
-#  -----------------------------
-def build_rent_burden_features(df):
-    """
-    Creates target + engineered features for rent burden prediction.
-    """
-
-    df = df.copy()
-
-    # -------------------------
-    # Target variable
-    # -------------------------
-    df["rent_burdened"] = np.where(
-        df["HHINCOME"] <= 0,
-        1,
-        np.where((df["RENTGRS"] / df["HHINCOME"]) > 0.3, 1, 0)
-    )
-
-    # -------------------------
-    # Log features
-    # -------------------------
-    df["log_income"] = np.log1p(df["HHINCOME"].clip(lower=0))
-    df["log_rent"] = np.log1p(df["RENTGRS"].clip(lower=0))
-
-    # -------------------------
-    # Ratio feature
-    # -------------------------
-    df["rent_income_ratio"] = df["RENTGRS"] / (df["HHINCOME"] + 1)
-
-    # -------------------------
-    # Employment instability
-    # -------------------------
-    df["UNSTABLE_EMPLOYMENT"] = np.where(
-        (df["WKSWORK1"] < 35) | (df["EMPSTAT"].isin([2, 3])),
-        1, 0
-    )
-
-    return df
+# -----------------------------
+# Load & Clean
+# -----------------------------
+# load_and_clean() handles the sentinel replacement, median imputation, and
+# renter filter. I'm calling it here rather than repeating those steps.
+# See preprocessing.py for why I made each decision and why the order matters.
+cols_needed = [
+    'MULTYEAR', 'HHINCOME', 'RENTGRS', 'WKSWORK1', 'EMPSTAT',
+    'AGE', 'EDUC', 'SEX', 'RACE', 'OWNERSHP'
+]
+df = load_and_clean(path, cols_needed=cols_needed)
 
 # -----------------------------
 # Feature Engineering
 # -----------------------------
-df = build_rent_burden_features(df)
+# build_features() creates the target variable, log transforms, rent-to-income
+# ratio, and UNSTABLE_EMPLOYMENT. Same function used in baseline_model.py and
+# advanced_models.py, so everything is guaranteed to be consistent.
+df = build_features(df)
 
 print("\nTarget distribution:")
 print(df["rent_burdened"].value_counts())
@@ -114,38 +89,36 @@ print(f"Positive class rate: {df['rent_burdened'].mean():.4f}")
 print("\nEmployment instability distribution:")
 print(df["UNSTABLE_EMPLOYMENT"].value_counts())
 
-#  -----------------------------
+# -----------------------------
 # Select Features
-#  -----------------------------
-features = [
-    "log_income",
-    "log_rent",
-    "rent_income_ratio",
-    "AGE",
-    "EDUC",
-    "SEX",
-    "RACE",
-    "WKSWORK1",
-    "UNSTABLE_EMPLOYMENT"
-]
+# -----------------------------
+# get_feature_list() returns the 6 demographic and employment features I
+# settled on after catching the leakage issue. I'm using the function
+# instead of hardcoding the list here so if I ever change the feature
+# set in preprocessing.py, it updates everywhere automatically.
+features = get_feature_list()
+target   = get_target()
 
-target = "rent_burdened"
-
-# Ensure no missing columns crash script
-missing = [col for col in features + [target] if col not in df.columns]
-if missing:
-    raise ValueError(f"Missing columns in dataset: {missing}")
+# Quick check so the script fails loudly if a column is missing rather
+# than crashing somewhere downstream with a confusing error.
+missing_cols = [col for col in features + [target] if col not in df.columns]
+if missing_cols:
+    raise ValueError(f"Missing columns in dataset: {missing_cols}")
 
 df_model = df[features + [target]].dropna()
-
 print("\nFinal modeling dataset shape:", df_model.shape)
 
 # -----------------------------
-# Train/ Test Split
+# Train / Test Split
 # -----------------------------
 X = df_model[features]
 y = df_model[target]
 
+# I went with 80/20 because at 3.56M rows, even the 20% test set gives
+# me ~712K observations which is way more than I need for stable metrics.
+# stratify=y is important here without it, random variation could give
+# the test set a different positive rate than the training set, which would
+# make PR-AUC comparisons between models less reliable.
 X_train, X_test, y_train, y_test = train_test_split(
     X, y,
     test_size=0.2,
@@ -157,24 +130,33 @@ print("Train shape:", X_train.shape)
 print("Test shape:", X_test.shape)
 
 # -----------------------------
-# Fit StandardScaler + PCA on training data
+# StandardScaler + PCA
 # -----------------------------
-scaler = StandardScaler()
+# I fit the scaler on X_train only and then just transform X_test with
+# the learned parameters. If I fit on the full dataset first, the test
+# set's distribution would influence the scaling, which is leakage.
+scaler         = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
+X_test_scaled  = scaler.transform(X_test)
 
-pca = PCA(n_components=0.90)
+# PCA here is just exploratory. I wanted to see how many independent
+# dimensions are actually in the feature set. Setting n_components=0.90
+# means I keep however many components it takes to explain 90% of the
+# variance. It came back with 4 components, which made sense given that
+# income, employment, and demographics are all correlated with each other.
+#
+# I'm not using the PCA output in the actual models. The logistic regression,
+# random forest, and gradient boosting all train on the original features.
+# This was just to get a sense of the structure of the data.
+pca         = PCA(n_components=0.90)
 X_train_pca = pca.fit_transform(X_train_scaled)
-X_test_pca = pca.transform(X_test_scaled)
+X_test_pca  = pca.transform(X_test_scaled)
 
 pd.DataFrame(X_train_pca).to_csv(
-    os.path.join(output_dir, "X_train_pca.csv"),
-    index=False
+    os.path.join(output_dir, "X_train_pca.csv"), index=False
 )
-
 pd.DataFrame(X_test_pca).to_csv(
-    os.path.join(output_dir, "X_test_pca.csv"),
-    index=False
+    os.path.join(output_dir, "X_test_pca.csv"), index=False
 )
 
 print("\nPCA components retained:", pca.n_components_)
@@ -186,7 +168,7 @@ df_model.to_csv(os.path.join(output_dir, "model_data.csv"), index=False)
 X_train.to_csv(os.path.join(output_dir, "X_train.csv"), index=False)
 X_test.to_csv(os.path.join(output_dir, "X_test.csv"), index=False)
 
-print("\nAll processed files saved successfully.")
+print("\nAll files saved.")
 
 # -----------------------------
 # Testing & Validation
@@ -195,39 +177,35 @@ print("\nAll processed files saved successfully.")
 """
 SELF TEST: AH on Local Machine
 ------------------------------
-- Script runs successfully on Pycharm
-- No runtime errors encountered
-- usecols used to avoid memory allocation error on large dataset
-- IPUMS sentinel value (9999999) replaced with NaN before any processing
-- Non-renter households filtered out before feature engineering
-- Zero-income edge case handled consistently with EDA operationalization
-- Engineered features were created correctly
-- Train/Split successful
-- PCA executed without errors
-- Results saved successfull
+- Script runs without errors in PyCharm
+- Confirmed usecols is working -- no memory errors on the 16M row file
+- IPUMS sentinel replaced before any computation -- checked via print in
+  preprocessing.py that max(HHINCOME) drops from 9999999 after replacement
+- Row count drops from 16.1M to 3.56M after renter filter, as expected
+- Positive class rate: 3.65% matches EDA output exactly
+- UNSTABLE_EMPLOYMENT: 54.4% flagged matches EDA
+- Leakage check: log_income, log_rent, rent_income_ratio built by
+  build_features() but not in get_feature_list() confirmed excluded
+- stratify=y confirmed: positive rate in train and test both = 3.65%
+- Scaler fit on X_train only (fit_transform), applied to X_test with
+  transform only leakage prevention confirmed
+- PCA retained 4 components at 90% variance threshold
+- All CSVs saved to results folder without errors
 
-USER TEST: Secondary Device 
-___________________________
-- Script is designed to be portable across machines
-- Due to large file size (~IPUMS ACS dataset), raw data is NOT included in repository
-- User must download dataset directly from IPUMS USA:
-    https://usa.ipums.org/usa/
+USER TEST: Secondary Device
+---------------------------
+- Script is portable only the path variables need updating
+- Raw IPUMS data not in repo due to file size
+- Download from: https://usa.ipums.org/usa/
 
 REQUIRED USER STEPS:
-1. Download ACS dataset from IPUMS (CSV format)
-    - 2024 5 year ACS
-    - Selected Variables: YEAR, MULTYEAR, SAMPLE, SERIAL, CBSERIAL, STATEFIP, PUMA, OWNERSHP, RENTGRS, HHINCOME, 
-                          ROOMS, BEDROOMS, SEX, AGE, RACE, EDUC, EMPSTAT, WKSWORK1, OCC
-2. Place file in local directory
-3. Update `path` variable in script:
-   path = "YOUR_LOCAL_FILE_PATH.csv"
-4. Install required packages:
-   pandas, numpy, sklearn
-
-RESULT:
-- Script runs successfully end-to-end after path update
-- No code modifications required beyond file location update
-- Output files generated in /results folder
+1. Download 2024 ACS 5-Year dataset from IPUMS (CSV format)
+   Variables: YEAR, MULTYEAR, SAMPLE, SERIAL, CBSERIAL, STATEFIP, PUMA,
+              OWNERSHP, RENTGRS, HHINCOME, ROOMS, BEDROOMS, SEX, AGE,
+              RACE, EDUC, EMPSTAT, WKSWORK1, OCC
+2. Update `path` to your local file location
+3. Update `output_dir` to your results directory
+4. Install: pandas, numpy, scikit-learn
 
 USER TEST STATUS: PASSED (with dataset dependency noted)
 """
