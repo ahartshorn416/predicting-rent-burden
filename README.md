@@ -47,18 +47,63 @@ rent_burdened = 1 if (RENTGRS / HHINCOME) > 0.3 else 0
 
 ---
 
+## 🛠️ Custom Functions
+
+### `preprocessing.py` (shared module — repo root)
+All four modeling scripts import from this shared module. It contains the canonical definitions for every preprocessing and feature engineering decision, so changes only need to be made in one place.
+
+| Function | Arguments | Returns | Purpose |
+|----------|-----------|---------|---------|
+| `load_and_clean(path, cols_needed)` | CSV path, list of columns | Cleaned renter-only DataFrame | Replaces IPUMS sentinel, median imputes, filters to renters |
+| `build_features(df)` | Cleaned DataFrame | DataFrame with engineered columns | Creates target variable, log transforms, rent-to-income ratio, UNSTABLE_EMPLOYMENT |
+| `get_feature_list()` | None | List of 6 feature names | Returns the canonical model feature set |
+| `get_target()` | None | String `'rent_burdened'` | Returns the target column name |
+
+**Usage example:**
+```python
+from preprocessing import load_and_clean, build_features, get_feature_list, get_target
+
+df = load_and_clean(path, cols_needed=['HHINCOME', 'RENTGRS', ...])
+df = build_features(df)
+features = get_feature_list()  # ['AGE', 'EDUC', 'SEX', 'RACE', 'WKSWORK1', 'UNSTABLE_EMPLOYMENT']
+target   = get_target()        # 'rent_burdened'
+```
+
+### `BalancedHGB` (in `advanced_models.py`)
+A custom wrapper around `HistGradientBoostingClassifier` that computes balanced sample weights internally during `fit()`. This prevents weight leakage into the `RandomizedSearchCV` scorer, which was inflating CV PR-AUC from ~0.15 to ~0.78 when weights were passed via `fit_params`.
+
+```python
+model = BalancedHGB(max_iter=100, max_depth=5, learning_rate=0.191,
+                    min_samples_leaf=33, l2_regularization=0.300,
+                    max_leaf_nodes=31, random_state=42)
+model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
+y_prob = model.predict_proba(X_test)[:, 1]
+```
+
+### `evaluate(name, model, X_te, y_te, ...)` (in `advanced_models.py`)
+Evaluates a fitted model on the test set and saves all outputs (classification report, confusion matrix, feature importances if available, ROC curve, PR curve). Returns `(roc_auc, pr_auc)` for the comparison table.
+
+### `subgroup_metrics(df_sub, group_col, attribute_label, min_n)` (in `advanced_models.py`)
+Computes PPR, TPR, FPR, and PR-AUC for each demographic subgroup. Groups with fewer than `min_n` observations (default 200) are excluded to avoid unreliable metric estimates.
+
+### `disparity_summary(metrics_df, ref_group, attribute_name)` (in `advanced_models.py`)
+Computes disparity gaps (DP_diff, DP_ratio, EO_TPR_diff, EO_FPR_diff) relative to a reference group (White or Male).
+
+---
+
 ## 🛠️ Feature Engineering
 - Created **rent-to-income ratio** (excluded from model feature set to prevent target leakage)
 - Generated **UNSTABLE_EMPLOYMENT** indicator:
   - Flagged households with `WKSWORK1 < 35` or `EMPSTAT ∈ {2, 3}` (unemployed / not in labor force)
 - Applied **log transformations** to reduce skew on income and rent variables
 - Restricted dataset to **renter-only households** (`RENTGRS > 0`) — non-renters cannot be rent-burdened by definition
-- Handled extreme values and invalid entries (e.g., IPUMS sentinel value 9,999,999 for missing income)
+- Handled IPUMS sentinel value 9,999,999 for missing income (replaced with NaN, then median imputed)
 
 ---
 
 ## ⚙️ Preprocessing
-- Replaced IPUMS sentinel income values with NaN; applied median imputation (~0.4% of rows affected)
+- Replaced IPUMS sentinel income values with NaN; applied median imputation (~5.5% of full dataset affected, much smaller proportion within renter-only subset)
 - Removed non-renter and zero/negative income observations
 - Split data into **train (80%) / test (20%)** with stratification on target variable
 - `StandardScaler` and `PCA` fit on training data only and applied to test set to prevent data leakage
@@ -68,12 +113,14 @@ rent_burdened = 1 if (RENTGRS / HHINCOME) > 0.3 else 0
 
 ## 📈 Exploratory Data Analysis (EDA)
 - Generated summary tables for categorical and continuous variables
-- Assessed skewness and kurtosis for continuous variables
+- Assessed skewness and kurtosis: HHINCOME skew = 4.31, RENTGRS skew = 2.03 (renter-only subset)
+- Rent burden rate varied across years: 3.0% in 2020, peaking at 3.9% in 2021, stabilizing at 3.6% in 2024
 - Visualizations included:
-  - Histograms
-  - Boxplots
+  - Histograms (income, rent)
+  - Boxplots (income by rent burden status)
   - Correlation matrix
-  - Pairplots (sampled due to dataset size)
+  - Pairplots (sampled to 50K rows for performance)
+  - Rent burden rate by year
 
 ---
 
@@ -110,11 +157,11 @@ The baseline logistic regression model was trained on 6 demographic and employme
 
 | Fold | Train ROC-AUC | Val ROC-AUC | Train PR-AUC | Val PR-AUC |
 |------|--------------|-------------|--------------|------------|
-| 1 | 0.7728 | 0.7714 | 0.9999 | 0.9999 |
-| 2 | 0.7726 | 0.7724 | 0.9999 | 0.9999 |
-| 3 | 0.7727 | 0.7721 | 0.9999 | 0.9999 |
-| 4 | 0.7719 | 0.7752 | 0.9999 | 0.9999 |
-| 5 | 0.7728 | 0.7715 | 0.9999 | 0.9999 |
+| 1 | 0.7728 | 0.7714 | 0.0968 | 0.0968 |
+| 2 | 0.7726 | 0.7724 | 0.0968 | 0.0965 |
+| 3 | 0.7727 | 0.7721 | 0.0967 | 0.0969 |
+| 4 | 0.7719 | 0.7752 | 0.0969 | 0.0981 |
+| 5 | 0.7728 | 0.7715 | 0.0971 | 0.0961 |
 | **Mean (Val)** | — | **0.7725 ± 0.0016** | — | **0.0969 ± 0.0008** |
 
 Training and validation scores are nearly identical across all folds, indicating no evidence of overfitting.
@@ -206,10 +253,10 @@ Reference groups: White (RACE), Male (SEX).
 | Female | 373,357 | 4.0% | 42.6% | 84.7% | 40.9% | 0.147 |
 
 #### Key Fairness Findings
-- **Black households** show the largest disparity: PPR of 55.7% vs. 31.9% for White (DP ratio 1.74x), with an FPR gap of +22.7pp — the model generates substantially more false positives for non-burdened Black households
-- **Other Asian/PI households** are under-flagged: negative DP_diff (-0.061) and EO_TPR_diff (-0.035) indicate genuinely burdened households in this group are more likely to be missed
+- **Black households** show the largest disparity: PPR of 55.7% vs. 31.9% for White (DP ratio 1.74x), with an FPR gap of +22.7pp
+- **Other Asian/PI households** are under-flagged: negative DP_diff (-0.061) and EO_TPR_diff (-0.035) indicate genuinely burdened households are more likely to be missed
 - **Female households** are over-flagged relative to Male (FPR gap +8.3pp), partially explained by higher true prevalence (4.0% vs. 3.2%)
-- **Chinese households** have the highest PR-AUC (0.431), likely due to higher true prevalence (7.7%) providing more minority-class signal
+- **Chinese households** have the highest PR-AUC (0.431), likely due to higher true prevalence (7.7%)
 
 ---
 
@@ -220,7 +267,7 @@ Reference groups: White (RACE), Male (SEX).
 - Demographic Parity (PPR difference and ratio)
 - Equalized Odds (TPR and FPR differences)
 
-**Positive Class Rate (renter-only dataset):** 3.65%  
+**Positive Class Rate (renter-only dataset):** 3.65%
 **Naive Baseline PR-AUC:** 0.0365
 
 ---
@@ -229,9 +276,10 @@ Reference groups: White (RACE), Male (SEX).
 
 ### EDA Stage
 - Rent burden is rare (~3.65% among renters), indicating strong class imbalance
-- Income and rent variables are highly skewed, requiring log transformation
+- Income and rent variables are highly skewed on the renter-only subset (HHINCOME skew = 4.31, RENTGRS skew = 2.03), requiring log transformation
 - ~54% of renter households show unstable employment
 - Non-renter filtering reduced dataset from 16.1M to 3.6M rows
+- Rent burden rates were relatively stable across survey years (3.0%–3.9%), supporting treatment of pooled data as a single cross-section
 
 ### Baseline Model Stage
 - Logistic regression achieves ROC-AUC of 0.773 and PR-AUC of 0.097 using only demographic and employment features
@@ -257,8 +305,9 @@ Reference groups: White (RACE), Male (SEX).
 - Severe class imbalance (3.65% positive rate)
 - Observational data limits causal conclusions
 - `RACE` treated as ordinal integer — one-hot encoding to be explored in final model phase
-- Median imputation for `HHINCOME` may modestly compress income variance near the median (~65,000 rows affected)
+- Median imputation for `HHINCOME` may modestly compress income variance near the median
 - Hyperparameter search conducted on 5% subsample due to dataset size; best params refit on full training set
+- PCA retained 4 components (not 6 as in earlier reports) after leaky features were correctly removed from the feature set
 
 ---
 
@@ -303,26 +352,46 @@ Steps:
 
 ### ⚙️ 3. Update file paths in scripts
 
-Open the Python files and update the dataset path:
+Open each Python file and update the dataset path and output directory:
 ```python
-path = r"C:\Users\YOUR_USERNAME\Downloads\your_file.csv"
+path       = r"C:\Users\YOUR_USERNAME\Downloads\your_file.csv"
 output_dir = r"C:\Users\YOUR_USERNAME\...\results"
 ```
 
 ### 📦 4. Install required packages
 ```bash
-pip install pandas numpy scikit-learn matplotlib seaborn scipy
+pip install pandas numpy scikit-learn matplotlib seaborn scipy jupytext
 ```
 
-### ▶️ 5. Run the scripts in order
+### 📁 5. Repository structure
+
+```
+predicting-rent-burden/
+    preprocessing.py              ← shared module (REQUIRED — must stay at repo root)
+    eda/
+        eda.py
+    feature engineering/
+        feature_engineering.py
+    baseline model/
+        baseline_model.py
+    advanced models/
+        advanced_models.py
+    results/                      ← all outputs saved here
+```
+
+> **Important:** `preprocessing.py` must remain at the repo root. All four scripts import from it using a path that looks one level up from their subfolder. Moving it will break the imports.
+
+### ▶️ 6. Run the scripts in order
 ```bash
-python eda.py
-python feature_engineering.py
-python baseline_model.py
-python advanced_models.py   # includes fairness analysis
+python eda/eda.py
+python "feature engineering/feature_engineering.py"
+python "baseline model/baseline_model.py"
+python "advanced models/advanced_models.py"   # includes fairness analysis
 ```
 
-### 📂 6. Output files
+> Run `baseline_model.py` before `advanced_models.py` — the advanced models script loads `baseline_metrics.csv` from the results folder for the comparison table.
+
+### 📂 7. Output files
 
 All outputs are saved in `/results`, including:
 
