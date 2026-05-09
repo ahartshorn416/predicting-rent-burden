@@ -8,7 +8,7 @@ Fairness Analysis
 
 This script is my exploratory data analysis on the 2024 ACS 5-Year PUMS data.
 The main things I wanted to figure out before modeling were:
-  1. How skewed are income and rent? (Spoiler: very -- both needed log transforms)
+  1. How skewed are income and rent? (Spoiler: very both needed log transforms)
   2. How bad is the class imbalance in the target variable?
   3. Does UNSTABLE_EMPLOYMENT actually capture what I think it does?
   4. Are there any data quality issues I need to deal with before modeling?
@@ -320,13 +320,13 @@ SELF TEST: AH on Local Machine
 ------------------------------
 - Script runs without errors in PyCharm
 - Missingness checked on raw data before any cleaning
-- IPUMS sentinel (9999999) confirmed replaced -- checked via print statement
+- IPUMS sentinel (9999999) confirmed replaced checked via print statement
 - Row count drops from ~16.1M to ~3.6M after renter filter, as expected
-- Positive class rate: 3.65% -- consistent with what I expected from HUD data
+- Positive class rate: 3.65% consistent with what I expected from HUD data
 - UNSTABLE_EMPLOYMENT: ~54% flagged as unstable, which makes sense for renters
 - All summary stats computed and saved correctly
 - All 7 visualizations generated without errors
-- Used 50K row sample for plots -- generation time under 2 minutes
+- Used 50K row sample for plots generation time under 2 minutes
 
 USER TEST: Secondary Device
 ---------------------------
